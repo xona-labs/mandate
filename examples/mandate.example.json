@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "id": "weekly-tech",
+  "name": "Weekly tech DCA",
+  "text": "DCA $50 a week into NVDA and TSLA, never more than 40% in one name, spend up to $0.50 a day on research.",
+  "autonomy": "auto",
+  "universe": ["NVDA", "TSLA"],
+  "budget": {
+    "totalUsd": 1000,
+    "perTradeUsd": 50,
+    "perDayUsd": 100,
+    "researchPerDayUsd": 0.5,
+    "researchPerCallUsd": 0.1
+  },
+  "rules": [
+    { "kind": "dca", "id": "nvda-weekly", "stock": "NVDA", "amountUsd": 50, "every": "1w" },
+    { "kind": "dca", "id": "tsla-weekly", "stock": "TSLA", "amountUsd": 50, "every": "1w" }
+  ],
+  "constraints": {
+    "maxAllocationPct": 40,
+    "maxPremiumPct": 2,
+    "minLiquidityUsd": 50000
+  },
+  "research": {
+    "enabled": true,
+    "topics": ["earnings", "news"],
+    "maxCallsPerTick": 2
+  }
+}

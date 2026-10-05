@@ -1,0 +1,61 @@
+{
+  "name": "@xona-labs/mandate",
+  "version": "0.0.1",
+  "description": "Mandate: give an agent a policy and a budget. It buys its own research over x402, trades tokenized stocks on Solana, and keeps a receipt for every decision.",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./xpay": {
+      "types": "./dist/adapters/xpay.d.ts",
+      "default": "./dist/adapters/xpay.js"
+    }
+  },
+  "bin": {
+    "mandate": "dist/cli/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "dev": "tsx src/cli/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mandate",
+    "solana",
+    "tokenized-stocks",
+    "agentic-trading",
+    "x402",
+    "ai-agent",
+    "xona",
+    "xpay"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@xona-labs/xpay": "^0.2.37",
+    "commander": "^13.1.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xona-labs/mandate"
+  }
+}
