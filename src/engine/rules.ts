@@ -1,29 +1,33 @@
 /**
- * Deterministic decider: turns the mandate's rules into proposals, no LLM.
+ * Deterministic decider: turns the mandate's rules into proposals, no model.
  *
- * This is the baseline and the fallback. An LLM-backed decider implements the
- * same {@link Decider} port and can use research notes to skip, shrink, or
- * add trades; the policy gate treats both the same.
+ * It is also the baseline the LLM decider starts from: the model can keep,
+ * shrink or skip what this produces, and the policy gate treats both the same.
  */
 
-import { everyToMs } from "../mandate/schema.js";
-import type { Decider, DecisionContext, Proposal } from "../ports.js";
+import { everyToMs, type Rule } from "../mandate/schema.js";
+import type { Decider, DecisionContext, DecisionResult, Proposal } from "../ports.js";
+
+/** Rules whose interval has elapsed since their last run. */
+export function dueRules({ mandate, state, now }: Pick<DecisionContext, "mandate" | "state" | "now">): Rule[] {
+  return mandate.rules.filter((rule) => {
+    const last = state.rules[rule.id]?.lastRunAt;
+    return !last || now.getTime() - Date.parse(last) >= everyToMs(rule.every)!;
+  });
+}
+
+export function scheduledProposal(rule: Rule): Proposal {
+  return {
+    ruleId: rule.id,
+    side: "buy",
+    stock: rule.stock,
+    usd: rule.amountUsd,
+    reason: `Scheduled buy: $${rule.amountUsd} of ${rule.stock} every ${rule.every}`,
+  };
+}
 
 export class RulesDecider implements Decider {
-  async decide({ mandate, state, now }: DecisionContext): Promise<Proposal[]> {
-    const proposals: Proposal[] = [];
-    for (const rule of mandate.rules) {
-      const last = state.rules[rule.id]?.lastRunAt;
-      const interval = everyToMs(rule.every)!;
-      if (last && now.getTime() - Date.parse(last) < interval) continue;
-      proposals.push({
-        ruleId: rule.id,
-        side: "buy",
-        stock: rule.stock,
-        usd: rule.amountUsd,
-        reason: `Scheduled buy: $${rule.amountUsd} of ${rule.stock} every ${rule.every}`,
-      });
-    }
-    return proposals;
+  async decide(ctx: DecisionContext): Promise<DecisionResult> {
+    return { decider: "rules", proposals: dueRules(ctx).map(scheduledProposal) };
   }
 }

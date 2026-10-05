@@ -75,6 +75,18 @@ export const MandateSchema = z
      * "auto": the agent executes inside the limits without asking.
      */
     autonomy: z.enum(["propose", "auto"]).default("propose"),
+    /**
+     * "rules": scheduled rules only, no model involved.
+     * "llm": a model reviews each tick and may keep, shrink or skip scheduled buys.
+     */
+    decider: z.enum(["rules", "llm"]).default("rules"),
+    /**
+     * Soft instructions the LLM decider applies with judgment ("skip a buy after
+     * an earnings miss"). Never enforced by the policy gate, never able to widen it.
+     */
+    guidance: z.array(z.string()).default([]),
+    /** Lets the LLM decider propose trades beyond the scheduled rules (still inside every limit). */
+    discretionary: z.boolean().default(false),
     /** The only stocks this mandate may touch. */
     universe: z.array(z.string().min(1)).min(1),
     budget: BudgetSchema,

@@ -5,6 +5,7 @@
  * standalone CLI, and tests each plug in their own implementations.
  */
 
+import type * as z4 from "zod/v4";
 import type { Mandate } from "./mandate/schema.js";
 import type { MandateState } from "./store/index.js";
 
@@ -103,10 +104,40 @@ export interface DecisionContext {
   state: MandateState;
   portfolio: Portfolio;
   notes: ResearchNote[];
+  /** Live quotes for the universe; a stock is missing when its quote failed. */
+  quotes: Quote[];
   now: Date;
 }
 
-/** Turns context into proposals. Rule-based today, LLM-backed later. */
+/** A scheduled rule the decider chose not to act on this period. */
+export interface SkippedRule {
+  ruleId: string;
+  reason: string;
+}
+
+export interface DecisionResult {
+  proposals: Proposal[];
+  skipped?: SkippedRule[];
+  /** The decider's overall read of the situation. Goes on the receipt. */
+  summary?: string;
+  /** Which decider produced this ("rules", "llm"). */
+  decider?: string;
+}
+
+/** Turns context into proposals. The policy gate treats every decider the same. */
 export interface Decider {
-  decide(ctx: DecisionContext): Promise<Proposal[]>;
+  decide(ctx: DecisionContext): Promise<DecisionResult>;
+}
+
+export interface LlmRequest<S extends z4.ZodType> {
+  system: string;
+  prompt: string;
+  /** Shape the model must answer in. Keep it plain: no refinements or numeric bounds. */
+  schema: S;
+  effort?: "low" | "medium" | "high" | "xhigh";
+}
+
+/** A model that answers in a given shape. Claude by default; hosts can plug their own. */
+export interface Llm {
+  generate<S extends z4.ZodType>(req: LlmRequest<S>): Promise<z4.infer<S>>;
 }

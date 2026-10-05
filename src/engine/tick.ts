@@ -1,12 +1,13 @@
 /**
  * One tick of the mandate loop:
- *   snapshot -> research -> decide -> policy gate -> execute -> receipt
+ *   snapshot -> research -> quote -> decide -> policy gate -> execute -> receipt
  *
  * A tick always writes exactly one receipt, including when it does nothing.
  */
 
 import { checkActive, checkTrade, researchBudgetLeft } from "../policy/index.js";
-import type { Broker, Decider, Portfolio, Research, ResearchNote } from "../ports.js";
+import { normalizeTicker } from "../mandate/schema.js";
+import type { Broker, Decider, Portfolio, Quote, Research, ResearchNote } from "../ports.js";
 import { receiptId, type DecisionRecord, type Receipt } from "../receipts/index.js";
 import type { Store } from "../store/index.js";
 import { RulesDecider } from "./rules.js";
@@ -77,15 +78,36 @@ export async function runTick(opts: TickOptions): Promise<Receipt> {
   receipt.research = notes;
   receipt.researchUsd = notes.reduce((sum, n) => sum + n.costUsd, 0);
 
-  const proposals = await decider.decide({ mandate, state, portfolio, notes, now });
+  // Quote the universe once: the decider reasons over it and the gate reuses it.
+  const quotes = new Map<string, Quote>();
+  for (const stock of mandate.universe) {
+    try {
+      quotes.set(normalizeTicker(stock), await broker.quote(stock));
+    } catch {
+      // Left out; retried below if a proposal actually needs it.
+    }
+  }
 
-  for (const proposal of proposals) {
+  const decision = await decider.decide({ mandate, state, portfolio, notes, quotes: [...quotes.values()], now });
+  const skipped = decision.skipped ?? [];
+  receipt.deliberation = { decider: decision.decider ?? "custom", summary: decision.summary, skipped };
+
+  const executing = !dryRun && mandate.autonomy === "auto";
+  if (executing && skipped.length > 0) {
+    // A skip uses up the period, so the same question is not re-researched every tick.
+    for (const { ruleId } of skipped) {
+      state.rules[ruleId] = { lastRunAt: now.toISOString(), fills: state.rules[ruleId]?.fills ?? 0 };
+    }
+    store.saveState(state);
+  }
+
+  for (const proposal of decision.proposals) {
     const record: DecisionRecord = { proposal, outcome: "blocked" };
     receipt.decisions.push(record);
 
-    let quote;
+    let quote: Quote;
     try {
-      quote = await broker.quote(proposal.stock);
+      quote = quotes.get(normalizeTicker(proposal.stock)) ?? (await broker.quote(proposal.stock));
     } catch (err) {
       record.outcome = "failed";
       record.detail = `quote failed: ${(err as Error).message}`;
@@ -98,7 +120,7 @@ export async function runTick(opts: TickOptions): Promise<Receipt> {
       continue;
     }
 
-    if (dryRun || mandate.autonomy === "propose") {
+    if (!executing) {
       record.outcome = "proposed";
       record.detail = dryRun ? "dry run" : "awaiting human execution";
       continue;

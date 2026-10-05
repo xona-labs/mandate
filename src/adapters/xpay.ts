@@ -79,6 +79,12 @@ export function createXpayBroker(xpay: XPay): Broker {
   };
 }
 
+/** True when a verified tokenized stock exists for the ticker. Keyless, no wallet needed. */
+export async function stockAvailable(ticker: string): Promise<boolean> {
+  const { stocks } = await findStocks({ query: normalizeTicker(ticker), limit: 5 });
+  return stocks.some((s) => s.verified && normalizeTicker(s.symbol) === normalizeTicker(ticker));
+}
+
 /** Listed USD price of a resource on Solana, or undefined when it is not priced in USDC there. */
 function solanaPriceUsd(resource: Resource): number | undefined {
   const req = resource.accepts.find((a) => a.network === "solana" && a.asset === USDC_MINT && a.amount);

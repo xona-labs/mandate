@@ -3,7 +3,7 @@
  * for, what it wanted to do, and what the mandate let it do.
  */
 
-import type { Fill, Portfolio, Proposal, ResearchNote } from "../ports.js";
+import type { Fill, Portfolio, Proposal, ResearchNote, SkippedRule } from "../ports.js";
 
 export type DecisionOutcome = "filled" | "proposed" | "blocked" | "failed";
 
@@ -24,6 +24,8 @@ export interface Receipt {
   research: ResearchNote[];
   researchUsd: number;
   decisions: DecisionRecord[];
+  /** What the decider concluded, including scheduled buys it chose to skip. */
+  deliberation?: { decider: string; summary?: string; skipped: SkippedRule[] };
   /** Set when the tick stopped before deciding (mandate paused, expired, ...). */
   skipped?: string;
 }
@@ -39,12 +41,14 @@ export function formatReceipt(r: Receipt): string {
   for (const n of r.research) {
     lines.push(`  research  $${n.costUsd.toFixed(3)}  ${n.topic}${n.stock ? ` ${n.stock}` : ""}  ${n.source}`);
   }
+  if (r.deliberation?.summary) lines.push(`  ${r.deliberation.decider}: ${r.deliberation.summary}`);
+  for (const s of r.deliberation?.skipped ?? []) lines.push(`  skipped   ${s.ruleId}  (${s.reason})`);
   for (const d of r.decisions) {
     const p = d.proposal;
     const head = `  ${d.outcome.padEnd(8)}  ${p.side} $${p.usd.toFixed(2)} ${p.stock}`;
     lines.push(d.fill ? `${head}  tx ${d.fill.txSig}` : d.detail ? `${head}  (${d.detail})` : head);
     lines.push(`            why: ${p.reason}`);
   }
-  if (!r.skipped && r.decisions.length === 0) lines.push("  no action");
+  if (!r.skipped && r.decisions.length === 0 && !r.deliberation?.skipped.length) lines.push("  no action");
   return lines.join("\n");
 }

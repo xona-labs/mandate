@@ -13,6 +13,18 @@
     "./xpay": {
       "types": "./dist/adapters/xpay.d.ts",
       "default": "./dist/adapters/xpay.js"
+    },
+    "./claude": {
+      "types": "./dist/adapters/claude.d.ts",
+      "default": "./dist/adapters/claude.js"
+    },
+    "./openrouter": {
+      "types": "./dist/adapters/openrouter.d.ts",
+      "default": "./dist/adapters/openrouter.js"
+    },
+    "./llm": {
+      "types": "./dist/adapters/llm.d.ts",
+      "default": "./dist/adapters/llm.js"
     }
   },
   "bin": {
@@ -45,6 +57,7 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.131.0",
     "@xona-labs/xpay": "^0.2.37",
     "commander": "^13.1.0",
     "zod": "^3.23.0"

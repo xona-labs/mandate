@@ -21,12 +21,15 @@ const storeFor = (id: string) => new FileStore(join(mandateHome(), id));
 function summarize(m: Mandate): string {
   const b = m.budget;
   return [
-    `${m.name} (${m.id})  status: ${m.status}  autonomy: ${m.autonomy}`,
+    `${m.name} (${m.id})  status: ${m.status}  autonomy: ${m.autonomy}  decider: ${m.decider}`,
     m.text ? `  "${m.text}"` : undefined,
     `  universe: ${m.universe.join(", ")}`,
     `  budget:   $${b.totalUsd} total, $${b.perTradeUsd}/trade, $${b.perDayUsd}/day, research $${b.researchPerDayUsd}/day`,
     ...m.rules.map((r) => `  rule:     ${r.id}: buy $${r.amountUsd} of ${r.stock} every ${r.every}`),
     m.constraints.maxAllocationPct !== undefined ? `  limit:    max ${m.constraints.maxAllocationPct}% in one stock` : undefined,
+    ...m.guidance.map((g) => `  guidance: ${g}`),
+    m.discretionary ? "  discretionary: may propose trades beyond the schedule" : undefined,
+    m.research.enabled ? `  research: ${m.research.topics.join(", ")}` : undefined,
     m.expiresAt ? `  expires:  ${m.expiresAt}` : undefined,
   ]
     .filter(Boolean)
@@ -44,6 +47,34 @@ program
     if (store.exists()) throw new Error(`mandate ${mandate.id} already exists`);
     store.saveMandate(mandate);
     console.log(summarize(mandate));
+    console.log(`\nSaved as draft. Activate with: mandate approve ${mandate.id}`);
+  });
+
+program
+  .command("compile <text>")
+  .description("Turn a plain-language instruction into a draft mandate")
+  .option("--id <id>", "mandate id (default: derived from the name)")
+  .option("--no-save", "print the draft without saving it")
+  .action(async (text: string, opts: { id?: string; save: boolean }) => {
+    const { compileMandate } = await import("../mandate/compile.js");
+    const { createLlm } = await import("../adapters/llm.js");
+    const { stockAvailable } = await import("../adapters/xpay.js");
+    const result = await compileMandate({ text, id: opts.id, llm: await createLlm(), checkStock: stockAvailable });
+    const { mandate } = result;
+
+    console.log(summarize(mandate));
+    const section = (title: string, items: string[]) => {
+      if (items.length) console.log(`\n${title}\n${items.map((i) => `  - ${i}`).join("\n")}`);
+    };
+    section("Assumed (check these before approving):", result.assumptions);
+    section("Not covered by this mandate:", result.unsupported);
+    section("No tradable tokenized stock found for:", result.unavailable);
+
+    if (result.unavailable.length > 0) throw new Error("\nNot saved: remove or replace the unavailable stocks and compile again.");
+    if (!opts.save) return;
+    const store = storeFor(mandate.id);
+    if (store.exists()) throw new Error(`\nNot saved: mandate ${mandate.id} already exists (pass --id to choose another).`);
+    store.saveMandate(mandate);
     console.log(`\nSaved as draft. Activate with: mandate approve ${mandate.id}`);
   });
 
@@ -90,13 +121,24 @@ program
   .description("Run one tick: research, decide, trade inside the mandate")
   .option("--dry-run", "evaluate without paying for research or trading")
   .option("--profile <name>", "xpay profile to trade from", "default")
-  .action(async (id: string, opts: { dryRun?: boolean; profile: string }) => {
+  .option("--decider <kind>", "override the mandate's decider: rules or llm")
+  .action(async (id: string, opts: { dryRun?: boolean; profile: string; decider?: string }) => {
     // Loaded lazily so the read-only commands never touch a wallet.
     const { createXPay, loadProfile } = await import("@xona-labs/xpay");
     const { createXpayBroker, createXpayResearch } = await import("../adapters/xpay.js");
     const xpay = createXPay({ profile: await loadProfile({ name: opts.profile }) });
+    const store = storeFor(id);
+    const kind = opts.decider ?? store.loadMandate().decider;
+    if (kind !== "rules" && kind !== "llm") throw new Error(`unknown decider "${kind}" (use rules or llm)`);
+    let decider;
+    if (kind === "llm") {
+      const { LlmDecider } = await import("../engine/llm-decider.js");
+      const { createLlm } = await import("../adapters/llm.js");
+      decider = new LlmDecider({ llm: await createLlm() });
+    }
     const receipt = await runTick({
-      store: storeFor(id),
+      store,
+      decider,
       broker: createXpayBroker(xpay),
       research: createXpayResearch(xpay),
       dryRun: opts.dryRun,
